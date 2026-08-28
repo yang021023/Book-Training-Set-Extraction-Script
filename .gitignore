@@ -8,3 +8,7 @@
 # 只上传当前 Skill 本体及其脚本。
 !/manufacturing-document-qa/
 !/manufacturing-document-qa/**
+
+# 可重建的本地运行依赖和便携运行时不提交。
+/manufacturing-document-qa/node_modules/
+/manufacturing-document-qa/runtime/

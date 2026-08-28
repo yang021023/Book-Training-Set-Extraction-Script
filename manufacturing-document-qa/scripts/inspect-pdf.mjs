@@ -31,11 +31,9 @@ if (!args.pdf) {
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const skillRoot = path.resolve(scriptDir, "..");
-const workspaceRoot = path.resolve(scriptDir, "..", "..");
 const localPdfjs = path.join(skillRoot, "node_modules", "pdfjs-dist", "legacy", "build", "pdf.mjs");
-const legacyPdfjs = path.join(workspaceRoot, "_qa_work", "tools", "node_modules", "pdfjs-dist", "legacy", "build", "pdf.mjs");
 const pdfPath = path.resolve(args.pdf);
-const pdfjsPath = path.resolve(args.pdfjs ?? (fs.existsSync(localPdfjs) ? localPdfjs : legacyPdfjs));
+const pdfjsPath = path.resolve(args.pdfjs ?? localPdfjs);
 
 for (const [label, candidate] of [
   ["PDF", pdfPath],

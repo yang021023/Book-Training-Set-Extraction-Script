@@ -1,0 +1,7 @@
+interface:
+  display_name: "制造书籍问答生成"
+  short_description: "批量读取制造技术书籍并生成可独立训练的高质量问答数据"
+  default_prompt: "Use $manufacturing-document-qa to turn this manufacturing book into standalone training Q&A."
+
+policy:
+  allow_implicit_invocation: true

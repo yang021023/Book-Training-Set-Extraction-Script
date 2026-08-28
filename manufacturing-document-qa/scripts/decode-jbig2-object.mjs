@@ -6,10 +6,7 @@ import { fileURLToPath } from 'node:url';
 const scriptPath = fileURLToPath(import.meta.url);
 const scriptDir = path.dirname(scriptPath);
 const skillRoot = path.resolve(scriptDir, '..');
-const workspaceRoot = path.resolve(scriptDir, '..', '..');
-const localToolsRoot = path.join(skillRoot, 'node_modules');
-const legacyToolsRoot = path.join(workspaceRoot, '_qa_work', 'tools', 'node_modules');
-const defaultToolsRoot = fs.existsSync(localToolsRoot) ? localToolsRoot : legacyToolsRoot;
+const defaultToolsRoot = path.join(skillRoot, 'node_modules');
 const jbig2Header = Buffer.from([0x97, 0x4a, 0x42, 0x32, 0x0d, 0x0a, 0x1a, 0x0a, 0x03]);
 
 function escapeRegExp(value) {
