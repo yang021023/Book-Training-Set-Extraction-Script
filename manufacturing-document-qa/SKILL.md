@@ -37,6 +37,13 @@ description: Batch-read manufacturing, machining, fixture, mold, CAD/CAM/CAE, or
 
 ## 默认批量生产
 
+### 上下文与命令输出控制（硬约束）
+
+- 禁止对工作区、`manufacturing-document-qa`、`_qa_work` 或 `node_modules` 执行无边界递归枚举。查找书籍和状态时只查询目标扩展名、目标目录或已知 `book_id`；不得把依赖目录清单发送进会话。
+- PowerShell 诊断输出必须先投影为少量标量字段。不得把 `Get-Content` 返回对象、`FileInfo` 的 Provider/PSDrive 属性或其他嵌套系统对象直接交给 `ConvertTo-Json`；统计行数使用 .NET 文件 API并只输出路径、行数、字节数等必要字段。
+- 除当前 8 页的正文/OCR外，单次诊断输出应控制在约 10,000 字符以内。发现输出截断、对象属性异常展开或预计超过范围时，立即停止该诊断分支，不得换一种方式重复倾倒同一批内容。
+- JSONL 校验必须通过 `qa-work.ps1 -Action Validate -BookId <已绑定 book_id>` 执行，不直接拼接 `validate-jsonl.ps1` 参数。校验使用单独工具调用，不与临时文件删除、`Resume` 或其他命令串联；这样校验失败不会掩盖清理和状态核对结果。
+
 ### 会话与书籍绑定（硬约束）
 
 - 一个会话最多处理一本书。新会话首次选定、`Resume`、`Plan` 或处理某本书后，该会话即永久绑定这个 `book_id`；绑定在整个会话生命周期内不可更换，包括该书完成以后。
@@ -56,11 +63,11 @@ description: Batch-read manufacturing, machining, fixture, mold, CAD/CAM/CAE, or
 - 绑定判定完成前不得创建批次、提取页面、渲染、OCR 或 `Commit`；所有脚本调用都必须显式使用与绑定一致的 `-BookId`。发现拟调用的 `BookId` 与绑定不一致时，立即停止并请求新会话。
 
 1. 仅在新会话尚未绑定书籍时运行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/qa-work.ps1 -Action List`。用户点名或 IDE 有 `Active file` 且能唯一映射时直接 `Resume` 对应书；首次绑定后保存 `book_id`，后续所有 `Resume`、`Plan` 和 `Commit` 都必须显式使用这个 `book_id`。已绑定会话即使书籍完成，也不得通过 `List` 选择下一本。
-2. 使用 `Plan` 取得连续 8 页；普通批次必须使用脚本默认的 8 页，不得预先显式传入更小的 `BatchPages`，也不得因为之前发生过超时、会话错误或上下文压缩就主动改成 2–4 页。到书末自动缩短，绝不越过 PDF 实际页数。一次用户“继续”只授权当前一批和最多一次 `Commit`。`Commit` 成功后，本回合只允许删除当前批次临时文件、用 `Resume` 核对状态并向用户汇报；禁止再次调用 `Plan`、提取或渲染下一批页面、创建下一批文件或执行第二次 `Commit`。单独的“继续”不表示连续运行；只有用户明确要求“连续处理 N 批”“处理到第 X 页”或“完成整本”时，才可在同一回合处理多批。
+2. 使用 `Plan` 取得连续 8 页；普通批次必须使用脚本默认的 8 页，不得预先显式传入更小的 `BatchPages`，也不得因为之前发生过超时、会话错误或上下文压缩就主动改成 2–4 页。到书末自动缩短，绝不越过 PDF 实际页数。一次用户“继续”只授权当前一批和最多一次 `Commit`。`Commit` 成功后，本回合只允许删除当前批次临时文件、用 `Resume` 核对状态，并在达到约 100 条增量或整书完成时单独执行一次 `Validate`，随后向用户汇报；禁止再次调用 `Plan`、提取或渲染下一批页面、创建下一批文件或执行第二次 `Commit`。单独的“继续”不表示连续运行；只有用户明确要求“连续处理 N 批”“处理到第 X 页”或“完成整本”时，才可在同一回合处理多批。
 3. 优先提取 PDF 文本。文本层为空或明显损坏时才渲染对应页；扫描页渲染后先使用 [ocr-images.ps1](scripts/ocr-images.ps1) 做本地中文 OCR，再阅读 OCR 文本。只有 OCR 无法确认的公式、表格、图样和精确 G/M 代码才查看原图。不得因为上一批是扫描页就跳过本批的文本提取检查。
 4. 阅读当前批次后直接生成问答，并在生成时完成一次轻量检查。不要先保存候选、证据、拒绝项，再启动另一轮逐条复审。
 5. 把准备写入的记录组成临时批次，执行 `Commit`。脚本只保留通过硬门禁且不与现有问题精确重复的记录，原子更新 JSONL 和 `state.json`，随后删除临时批次。
-6. 每新增约 100 条或整书完成时运行一次 `validate-jsonl.ps1`。普通警告只供抽查，不阻止继续；不要每批重复扫描整本 JSONL。
+6. 每新增约 100 条或整书完成时，显式使用已绑定的 `book_id` 运行一次 `qa-work.ps1 -Action Validate`。普通警告只供抽查，不阻止继续；不要每批重复扫描整本 JSONL，也不要直接调用底层校验脚本。
 
 一个批次通常应产生约 15–50 条。正文稀疏时可以更少，高密度表格、工艺步骤或指令页可以更多。数量是漏项提示，不是凑数配额：优先检查定义、作用、适用条件、选择方法、参数与单位、步骤、比较、缺陷原因和结果判据。
 
@@ -107,4 +114,4 @@ description: Batch-read manufacturing, machining, fixture, mold, CAD/CAM/CAE, or
 - 只有用户明确要求“严格审计、证据映射或逐页验收”时，才临时建立所需证据和报告；审计产物不得成为以后批量生成的默认依赖。
 - 完成整书的条件只有：下一页超过总页数、最终 JSONL 结构校验通过、没有确定性禁用模式。无需双 reviewer、全书账本对账或逐页哈希。
 
-状态和提交使用 [qa-work.ps1](scripts/qa-work.ps1)，轻量成品检查使用 [validate-jsonl.ps1](scripts/validate-jsonl.ps1)。
+状态、提交和按书校验统一使用 [qa-work.ps1](scripts/qa-work.ps1)；[validate-jsonl.ps1](scripts/validate-jsonl.ps1) 是由前者调用的底层轻量检查器，不在普通批量流程中直接调用。

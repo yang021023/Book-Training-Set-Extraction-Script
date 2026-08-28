@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('Init', 'List', 'Resume', 'Plan', 'Commit', 'SetNext', 'Compact')]
+    [ValidateSet('Init', 'List', 'Resume', 'Plan', 'Commit', 'Validate', 'SetNext', 'Compact')]
     [string]$Action,
     [string]$WorkspaceRoot,
     [string]$BookId,
@@ -158,6 +158,21 @@ switch ($Action) {
         $targets = if ($BookId) { @(Load-State $BookId) } else { @(All-States) }
         foreach ($state in $targets) { Save-Json (State-Path $state.book_id) $state }
         Emit ([pscustomobject]@{compacted=$targets.Count;books=@($targets.book_id)})
+    }
+    'Validate' {
+        $state = Find-State
+        $outputPath = [IO.Path]::GetFullPath((Join-Path $script:Root ([string]$state.jsonl_file)))
+        if (-not $outputPath.StartsWith($script:Root + '\', [StringComparison]::OrdinalIgnoreCase) -or -not [IO.File]::Exists($outputPath)) {
+            Fail "JSONL 文件不存在或不在工作区内：$($state.jsonl_file)"
+        }
+        $validator = Join-Path $PSScriptRoot 'validate-jsonl.ps1'
+        if (-not [IO.File]::Exists($validator)) { Fail '未找到 validate-jsonl.ps1。' }
+        $validation = [ordered]@{}
+        foreach ($line in @(& $validator -Path $outputPath)) {
+            $parts = ([string]$line).Split('=', 2)
+            if ($parts.Count -eq 2) { $validation[$parts[0]] = $parts[1] }
+        }
+        Emit ([pscustomobject]@{book_id=$state.book_id;jsonl_file=$state.jsonl_file;validation=$validation})
     }
     'Commit' {
         if ([string]::IsNullOrWhiteSpace($BatchFile)) { Fail 'Commit 需要 BatchFile。' }
