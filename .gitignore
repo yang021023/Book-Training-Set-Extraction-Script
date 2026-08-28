@@ -12,3 +12,5 @@
 # 可重建的本地运行依赖和便携运行时不提交。
 /manufacturing-document-qa/node_modules/
 /manufacturing-document-qa/runtime/
+
+!/介绍.txt
