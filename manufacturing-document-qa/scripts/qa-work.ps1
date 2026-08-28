@@ -11,7 +11,7 @@ param(
     [string]$ActiveFile,
     [int]$PageCount,
     [int]$StartPage,
-    [ValidateRange(1, 8)][int]$BatchPages = 8,
+    [ValidateRange(1, 12)][int]$BatchPages = 8,
     [string]$BatchFile,
     [switch]$AsJson
 )
