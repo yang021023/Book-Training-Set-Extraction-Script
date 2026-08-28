@@ -1,9 +1,0 @@
-{
-  "private": true,
-  "description": "Local PDF inspection and rendering runtime for manufacturing-document-qa",
-  "dependencies": {
-    "@napi-rs/canvas": "1.0.8",
-    "jb2": "1.0.6",
-    "pdfjs-dist": "6.2.108"
-  }
-}

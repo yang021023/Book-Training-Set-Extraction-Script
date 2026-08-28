@@ -1,0 +1,10 @@
+# 默认忽略工作区根目录下的全部内容。
+/*
+
+# Git 忽略规则本身需要提交。
+!/.gitignore
+!/README.md
+
+# 只上传当前 Skill 本体及其脚本。
+!/manufacturing-document-qa/
+!/manufacturing-document-qa/**

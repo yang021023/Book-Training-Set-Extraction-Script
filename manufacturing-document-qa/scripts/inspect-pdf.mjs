@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 function fail(message, code = 1) {
   process.stderr.write(`${message}\n`);
@@ -25,12 +25,17 @@ function parseArgs(argv) {
 }
 
 const args = parseArgs(process.argv.slice(2));
-if (!args.pdf || !args.pdfjs) {
-  fail("Usage: node inspect-pdf.mjs --pdf <file.pdf> --pdfjs <pdf.mjs>", 2);
+if (!args.pdf) {
+  fail("Usage: node inspect-pdf.mjs --pdf <file.pdf> [--pdfjs <pdf.mjs>]", 2);
 }
 
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const skillRoot = path.resolve(scriptDir, "..");
+const workspaceRoot = path.resolve(scriptDir, "..", "..");
+const localPdfjs = path.join(skillRoot, "node_modules", "pdfjs-dist", "legacy", "build", "pdf.mjs");
+const legacyPdfjs = path.join(workspaceRoot, "_qa_work", "tools", "node_modules", "pdfjs-dist", "legacy", "build", "pdf.mjs");
 const pdfPath = path.resolve(args.pdf);
-const pdfjsPath = path.resolve(args.pdfjs);
+const pdfjsPath = path.resolve(args.pdfjs ?? (fs.existsSync(localPdfjs) ? localPdfjs : legacyPdfjs));
 
 for (const [label, candidate] of [
   ["PDF", pdfPath],

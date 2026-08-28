@@ -15,12 +15,17 @@ description: Batch-read manufacturing, machining, fixture, mold, CAD/CAM/CAE, or
 ├─ 书名.jsonl
 ├─ _qa_work/书名/state.json
 └─ manufacturing-document-qa/
+   ├─ package.json
+   ├─ runtime/node.exe
+   ├─ node_modules/
+   └─ scripts/
 ```
 
 - 最终 JSONL 每行只含 `messages`。
 - 每本书只长期保留一个小型 `state.json`，记录 PDF、JSONL、总页数和下一页。
 - 不建立 ledger、逐条 evidence、reviewer、逐页检查表、拒绝记录、Markdown 报告或长期截图/OCR 缓存。
 - 临时批次放 `_qa_work/tmp`，提交成功立即删除。
+- Windows x64 Node 运行时和 PDF 解析依赖随 Skill 保存在 `runtime/node.exe` 与 `node_modules`，下载 ZIP 并解压后即可使用，不要求系统已安装 Node，也不要求先运行 `npm install`。执行 `.mjs` 脚本时优先使用 `manufacturing-document-qa/runtime/node.exe`；`package.json` 仅用于依赖损坏时重建。脚本优先读取 Skill 内依赖，并兼容旧的 `_qa_work/tools` 路径。
 
 ## 默认批量生产
 

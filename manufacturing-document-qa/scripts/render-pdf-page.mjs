@@ -12,8 +12,11 @@ const value = (name, fallback = undefined) => {
 };
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const skillRoot = path.resolve(scriptDir, '..');
 const workspaceRoot = path.resolve(scriptDir, '..', '..');
-const toolsRoot = path.join(workspaceRoot, '_qa_work', 'tools', 'node_modules');
+const localToolsRoot = path.join(skillRoot, 'node_modules');
+const legacyToolsRoot = path.join(workspaceRoot, '_qa_work', 'tools', 'node_modules');
+const toolsRoot = fs.existsSync(localToolsRoot) ? localToolsRoot : legacyToolsRoot;
 const pdfPath = value('--pdf');
 const pageNumber = Number(value('--page'));
 const outputPath = value('--output');
