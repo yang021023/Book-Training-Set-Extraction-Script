@@ -91,7 +91,10 @@ function Find-State {
     if (-not [string]::IsNullOrWhiteSpace($BookId)) { return Load-State $BookId }
     if ([string]::IsNullOrWhiteSpace($ActiveFile)) { Fail '请提供 BookId 或 ActiveFile。' }
     $leaf = [IO.Path]::GetFileName($ActiveFile)
-    $matches = @(All-States | Where-Object { $_.pdf_file -eq $leaf -or $_.jsonl_file -eq $leaf })
+    $matches = @(All-States | Where-Object {
+        [IO.Path]::GetFileName([string]$_.pdf_file) -eq $leaf -or
+        [IO.Path]::GetFileName([string]$_.jsonl_file) -eq $leaf
+    })
     if ($matches.Count -ne 1) { Fail "ActiveFile 无法唯一映射：$leaf" }
     return $matches[0]
 }

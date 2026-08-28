@@ -28,6 +28,13 @@ description: Batch-read manufacturing, machining, fixture, mold, CAD/CAM/CAE, or
 - 临时批次放 `_qa_work/tmp`，提交成功立即删除。
 - PDF 解析依赖由 `package.json` 和 `package-lock.json` 声明，不把 `node_modules` 或 Node 可执行文件提交进 Skill。首次使用或依赖缺失时，在工作区运行 `npm install --prefix manufacturing-document-qa`；随后 `.mjs` 脚本只读取 Skill 内安装的 `node_modules`。
 
+## 书籍文件命名规则
+
+- 新建书籍状态时，先读取实际 PDF 文件名；去掉末尾的 `.pdf` 后，将其完整字符串作为 JSONL 的基本文件名和 `book_id`，JSONL 只把扩展名改为 `.jsonl`。
+- 必须保留原文件名中的书名、卷次、版本、出版社、来源标记、括号、空格及中英文标点，不得自行简称、翻译、重排或删除。例如：`《机械加工工艺手册》第1卷：工艺基础卷.(第二版) (机械工业出版社) (z-library.sk, 1lib.sk, z-lib.sk).pdf` 对应 `《机械加工工艺手册》第1卷：工艺基础卷.(第二版) (机械工业出版社) (z-library.sk, 1lib.sk, z-lib.sk).jsonl`。
+- `book_id` 同样使用去掉 `.pdf` 的完整文件名，以便跨会话按同一名称恢复。若已有状态或 JSONL 使用旧的简化名称，继续处理前先迁移为该规则；不得同时保留两个状态或两个输出文件。
+- PDF 位于工作区子目录时，JSONL 保持在同一目录，并在 `state.json` 中记录相对工作区根目录的路径；不得为套用命名规则改动 PDF 文件名。
+
 ## 默认批量生产
 
 ### 会话与书籍绑定（硬约束）
