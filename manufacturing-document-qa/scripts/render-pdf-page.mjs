@@ -208,6 +208,7 @@ const source = pdfBytes.toString('latin1');
 const task = pdfjsLib.getDocument({
   data: new Uint8Array(pdfBytes),
   disableWorker: true,
+  wasmUrl: pathToFileURL(path.join(toolsRoot, 'pdfjs-dist', 'wasm') + path.sep).href,
   verbosity: pdfjsLib.VerbosityLevel?.ERRORS ?? 0,
 });
 try {
@@ -216,13 +217,9 @@ try {
     throw new Error(`page ${pageNumber} is outside 1..${document.numPages}`);
   }
   const page = await document.getPage(pageNumber);
-  let jbig2 = null;
-  try {
-    jbig2 = detectFullPageJbig2(page, pdfBytes, source);
-  } catch {
-    // Raw-object inspection is an optimization for simple image-only pages.
-    // Compressed/encrypted object layouts must continue through normal pdfjs.
-  }
+  // PDF.js' WebAssembly decoder handles JBIG2 pages more reliably than the
+  // raw-object fast path for scans that use shared symbol dictionaries.
+  const jbig2 = null;
 
   let outputCanvas;
   if (jbig2) {

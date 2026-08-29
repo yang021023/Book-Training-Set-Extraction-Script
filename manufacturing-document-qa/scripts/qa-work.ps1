@@ -13,6 +13,7 @@ param(
     [int]$StartPage,
     [ValidateRange(1, 12)][int]$BatchPages = 8,
     [string]$BatchFile,
+    [switch]$LowYieldReviewed,
     [switch]$AsJson
 )
 
@@ -55,7 +56,12 @@ function Count-Lines([string]$FileName) {
     return @([IO.File]::ReadAllLines($path, $script:Utf8) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count
 }
 function To-Lite($State) {
-    if ([int]$State.schema_version -eq 2) { return $State }
+    if ([int]$State.schema_version -eq 2) {
+        if (-not (Has $State 'recent_commits')) {
+            $State | Add-Member -NotePropertyName recent_commits -NotePropertyValue @()
+        }
+        return $State
+    }
     if (-not (Has $State 'source') -or -not (Has $State 'output')) { Fail '无法识别旧 state.json。' }
     $legacyComplete = [string]$State.mode -in @('completed', 'legacy_audit_required')
     $next = if ($legacyComplete) { $null } else { $State.progress.resume_pdf_page }
@@ -71,6 +77,7 @@ function To-Lite($State) {
         record_count = Count-Lines ([string]$State.output.jsonl_file)
         status = $status
         updated_at = [DateTimeOffset]::Now.ToString('o')
+        recent_commits = @()
     }
 }
 function Load-State([string]$Id) {
@@ -101,9 +108,10 @@ function Find-State {
 function Emit($Value) {
     if ($AsJson) { $Value | ConvertTo-Json -Depth 10 -Compress } else { $Value | ConvertTo-Json -Depth 10 }
 }
-function Assert-RootFile([string]$Name, [string]$Extension, [switch]$MustExist) {
-    if ([string]::IsNullOrWhiteSpace($Name) -or [IO.Path]::GetFileName($Name) -ne $Name -or -not $Name.EndsWith($Extension, [StringComparison]::OrdinalIgnoreCase)) { Fail "必须提供工作区根目录中的 $Extension 文件名。" }
-    $path = Join-Path $script:Root $Name
+function Assert-WorkspaceFile([string]$Name, [string]$Extension, [switch]$MustExist) {
+    if ([string]::IsNullOrWhiteSpace($Name) -or [IO.Path]::IsPathRooted($Name) -or -not $Name.EndsWith($Extension, [StringComparison]::OrdinalIgnoreCase)) { Fail "必须提供工作区内的相对 $Extension 文件路径。" }
+    $path = [IO.Path]::GetFullPath((Join-Path $script:Root $Name))
+    if (-not $path.StartsWith($script:Root + '\', [StringComparison]::OrdinalIgnoreCase)) { Fail "文件必须位于工作区内：$Name" }
     if ($MustExist -and -not [IO.File]::Exists($path)) { Fail "文件不存在：$Name" }
 }
 function Test-Record($Record, [Collections.Generic.HashSet[string]]$Questions) {
@@ -127,11 +135,11 @@ if (-not [IO.Directory]::Exists($script:Root)) { Fail "工作区不存在：$scr
 switch ($Action) {
     'Init' {
         if ([string]::IsNullOrWhiteSpace($BookId) -or $PageCount -lt 1) { Fail 'Init 需要 BookId 和 PageCount。' }
-        Assert-RootFile $PdfFile '.pdf' -MustExist
-        Assert-RootFile $JsonlFile '.jsonl'
+        Assert-WorkspaceFile $PdfFile '.pdf' -MustExist
+        Assert-WorkspaceFile $JsonlFile '.jsonl'
         $path = State-Path $BookId
         if ([IO.File]::Exists($path)) { Fail "状态已存在：$BookId" }
-        $state = [pscustomobject][ordered]@{schema_version=2;book_id=$BookId;title=$(if($Title){$Title}else{$BookId});pdf_file=$PdfFile;jsonl_file=$JsonlFile;page_count=$PageCount;next_page=1;record_count=(Count-Lines $JsonlFile);status='active';updated_at=[DateTimeOffset]::Now.ToString('o')}
+        $state = [pscustomobject][ordered]@{schema_version=2;book_id=$BookId;title=$(if($Title){$Title}else{$BookId});pdf_file=$PdfFile;jsonl_file=$JsonlFile;page_count=$PageCount;next_page=1;record_count=(Count-Lines $JsonlFile);status='active';updated_at=[DateTimeOffset]::Now.ToString('o');recent_commits=@()}
         Save-Json $path $state; Emit $state
     }
     'List' {
@@ -185,6 +193,8 @@ switch ($Action) {
             if ($state.status -eq 'completed' -or $null -eq $state.next_page) { Fail '该书已完成。' }
             $start = [int]$batch.start_page; $end = [int]$batch.end_page
             if ($start -ne [int]$state.next_page -or $end -lt $start -or $end -gt [int]$state.page_count) { Fail "批次页码必须从 $($state.next_page) 开始且不得越界。" }
+            $pageTotal = $end - $start + 1
+            $candidateCount = @($batch.records).Count
             $outputPath = Join-Path $script:Root $state.jsonl_file
             $oldLines = if ([IO.File]::Exists($outputPath)) { @([IO.File]::ReadAllLines($outputPath, $script:Utf8) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
             $questions = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
@@ -196,12 +206,33 @@ switch ($Action) {
                 else { if(-not $reasons.ContainsKey($reason)){$reasons[$reason]=0};$reasons[$reason]++ }
             }
             if ($accepted.Count -eq 0) { Fail '批次没有新增记录，拒绝推进页码。' }
+            $minimumYield = if ($pageTotal -ge 4) { [Math]::Min(12, [int][Math]::Ceiling($pageTotal * 1.25)) } else { 0 }
+            $isLowYield = $minimumYield -gt 0 -and $accepted.Count -lt $minimumYield
+            if ($isLowYield -and -not $LowYieldReviewed) {
+                $rate = [Math]::Round($accepted.Count / [double]$pageTotal, 2)
+                Fail "低产批次已停止：$start-$end 共 $pageTotal 页，$candidateCount 条候选仅通过 $($accepted.Count) 条（$rate 条/页），复查门槛为 $minimumYield 条。请回看原图并补查定义、作用、适用条件、规格选择、参数与单位、步骤、比较、原因和判据；若内容确属稀疏，复核后使用 -LowYieldReviewed 重新提交。"
+            }
             $all = [Collections.Generic.List[string]]::new(); foreach($line in $oldLines){$all.Add($line)}; foreach($line in $accepted){$all.Add($line)}
             $temp = "$outputPath.tmp"; [IO.File]::WriteAllLines($temp, $all, $script:Utf8); Move-Item -LiteralPath $temp -Destination $outputPath -Force
             $state.record_count = $all.Count
             $state.next_page = if ($end -ge [int]$state.page_count) { $null } else { $end + 1 }
             $state.status = if ($null -eq $state.next_page) { 'completed' } else { 'active' }
             $state.updated_at = [DateTimeOffset]::Now.ToString('o')
+            $yieldPerPage = [Math]::Round($accepted.Count / [double]$pageTotal, 2)
+            $commitEntry = [pscustomobject][ordered]@{
+                start_page = $start
+                end_page = $end
+                page_count = $pageTotal
+                candidates = $candidateCount
+                added = $accepted.Count
+                skipped = [pscustomobject]$reasons
+                yield_per_page = $yieldPerPage
+                low_yield_reviewed = [bool]($isLowYield -and $LowYieldReviewed)
+                committed_at = $state.updated_at
+            }
+            $history = @(@($state.recent_commits) + $commitEntry)
+            if ($history.Count -gt 20) { $history = @($history[($history.Count - 20)..($history.Count - 1)]) }
+            $state.recent_commits = $history
             Save-Json (State-Path $state.book_id) $state
         }
         finally {
@@ -212,6 +243,6 @@ switch ($Action) {
         }
         $tmpRoot = [IO.Path]::GetFullPath((Join-Path $script:Work 'tmp')).TrimEnd('\') + '\'
         if ($batchPath.StartsWith($tmpRoot, [StringComparison]::OrdinalIgnoreCase)) { Remove-Item -LiteralPath $batchPath -Force }
-        Emit ([pscustomobject]@{book_id=$state.book_id;pages="$start-$end";added=$accepted.Count;skipped=$reasons;total=$state.record_count;next_page=$state.next_page;status=$state.status})
+        Emit ([pscustomobject]@{book_id=$state.book_id;pages="$start-$end";candidates=$candidateCount;added=$accepted.Count;skipped=$reasons;yield_per_page=$yieldPerPage;low_yield_reviewed=[bool]($isLowYield -and $LowYieldReviewed);total=$state.record_count;next_page=$state.next_page;status=$state.status})
     }
 }
