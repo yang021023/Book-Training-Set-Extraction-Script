@@ -26,24 +26,41 @@ try {
         }
     }
     $batchPath = Join-Path $testRoot '_qa_work\tmp\batch.json'
-    $batch = [pscustomobject]@{book_id='sample';start_page=1;end_page=8;records=@($records)}
+    $coverage = foreach ($index in 1..8) {
+        if ($index -le 7) {
+            [pscustomobject]@{page=$index;kind='technical';units=@([pscustomobject]@{summary="测试知识单元 $index";source_type='定义';source_fact="测试源页事实 $index";question="测试技术问题 $index？"})}
+        }
+        else {
+            [pscustomobject]@{page=$index;kind='nontechnical';reason='测试非技术页';units=@()}
+        }
+    }
+    $batch = [pscustomobject]@{book_id='sample';start_page=1;end_page=8;coverage=@($coverage);records=@($records)}
     [IO.File]::WriteAllText($batchPath, ($batch | ConvertTo-Json -Depth 6), $utf8)
 
-    $blocked = $false
+    $prematureOverrideBlocked = $false
     try {
-        & $qaWork -Action Commit -WorkspaceRoot $testRoot -BatchFile '_qa_work\tmp\batch.json' -AsJson | Out-Null
+        & $qaWork -Action Commit -WorkspaceRoot $testRoot -BookId 'sample' -BatchFile '_qa_work\tmp\batch.json' -LowYieldReviewed -AsJson | Out-Null
+    }
+    catch { $prematureOverrideBlocked = $_.Exception.Message -like '*必须先执行一次不含*' }
+    Assert-True $prematureOverrideBlocked 'a first attempt must not bypass the low-yield review with an override'
+
+    $blocked = $false
+    $blockedMessage = ''
+    try {
+        & $qaWork -Action Commit -WorkspaceRoot $testRoot -BookId 'sample' -BatchFile '_qa_work\tmp\batch.json' -AsJson | Out-Null
     }
     catch {
+        $blockedMessage = $_.Exception.Message
         $blocked = $_.Exception.Message -like '*低产批次已停止*'
     }
-    Assert-True $blocked 'low-yield commit should be blocked'
+    Assert-True $blocked "low-yield commit should be blocked; actual: $blockedMessage"
 
     $before = Get-Content -LiteralPath (Join-Path $testRoot '_qa_work\sample\state.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     Assert-True ([int]$before.next_page -eq 1) 'blocked commit must not advance next_page'
     Assert-True (-not [IO.File]::Exists((Join-Path $testRoot 'sample.jsonl'))) 'blocked commit must not create JSONL output'
     Assert-True ([IO.File]::Exists($batchPath)) 'blocked commit must preserve the batch for review'
 
-    $result = & $qaWork -Action Commit -WorkspaceRoot $testRoot -BatchFile '_qa_work\tmp\batch.json' -LowYieldReviewed -AsJson | ConvertFrom-Json
+    $result = & $qaWork -Action Commit -WorkspaceRoot $testRoot -BookId 'sample' -BatchFile '_qa_work\tmp\batch.json' -LowYieldReviewed -AsJson | ConvertFrom-Json
     Assert-True ([int]$result.added -eq 7) 'reviewed commit should add seven records'
     Assert-True ([bool]$result.low_yield_reviewed) 'reviewed commit should report the override'
     Assert-True (-not [IO.File]::Exists($batchPath)) 'successful commit should remove a temporary batch'
@@ -54,7 +71,7 @@ try {
     Assert-True ([int]$after.recent_commits[0].candidates -eq 7) 'history should retain candidate count'
     Assert-True ([double]$after.recent_commits[0].yield_per_page -eq 0.88) 'history should retain per-page yield'
 
-    [pscustomobject]@{status='passed';blocked_low_yield=$blocked;reviewed_added=$result.added;history_entries=@($after.recent_commits).Count} | ConvertTo-Json -Compress
+    [pscustomobject]@{status='passed';premature_override_blocked=$prematureOverrideBlocked;blocked_low_yield=$blocked;reviewed_added=$result.added;history_entries=@($after.recent_commits).Count} | ConvertTo-Json -Compress
 }
 finally {
     $resolvedTemp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
