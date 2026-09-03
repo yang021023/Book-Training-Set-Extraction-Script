@@ -24,6 +24,7 @@ $questions = @{}
 $answers = @{}
 $normalizedQuestions = @{}
 $warningCounts = [ordered]@{
+    nontechnical_scope = 0
     source_dependency = 0
     undefined_basis = 0
     ordinal_dependency = 0
@@ -33,14 +34,16 @@ $warningCounts = [ordered]@{
     arbitrary_case_lookup = 0
 }
 
+$nontechnicalScopeQuestion = '(?:工程师|工程技术人员).{0,24}(?:职业伦理|职业道德|职业操守|职业责任|公众利益|社会责任|诚信|保密|持续专业发展)|(?:职业伦理|职业道德|职业操守|公众利益|社会责任)|(?:安全教育|纪律教育|工业安全培训)|岗位纪律|安全内务|个人防护措施|个人穿戴|穿戴有哪些|(?:着装|工作服|工作帽|安全帽|防护鞋|护目镜).{0,20}(?:要求|措施)|消防器材|消防通道|无人值守用电|明火电炉|(?:事故|安全隐患).{0,24}(?:应急处置|处置要点|报告|保护现场)|无关人员.{0,20}(?:进入|观看)|机械伤害.{0,24}(?:潜在危险|基本管理措施)|(?:机械设备|机床)启动前.{0,16}安全检查|(?:机械工程)?实训(?:现场|期间|结束|场所).{0,32}(?:基本安全行为|整理工具|作业场地|关闭事项|意外事故|应急处置)'
+
 # Hard errors are deliberately narrow. Ambiguous wording belongs in review warnings.
 $forbiddenPatterns = @(
     '\.pdf(?:\b|["''，。])',
     '\.jsonl(?:\b|["''，。])',
     'z-library|1lib|z-lib|Anna''s Archive',
     '根据(?:本书|原文|上图|下图|该图)|本书指出|原文指出',
-    '(?:本书|书中|原文|文中|教材(?:中)?|本页|该页|页面)',
-    '(?:上图|下图|图中|表中|按图(?:示|样)|图示中|表格中)',
+    '(?:(?<!基)本书|书中|原文|文中|教材(?:中)?|本页|该页|页面)',
+    '(?:上图|下图|(?<!配)(?<!绘)(?<!视)(?<!面)图中|(?<!列)(?<!具)表中|按图(?:示|样)|图示中|表格中)',
     '(?:案例|示例|例题|实例)(?:中|里|的|条件(?:下)?)',
     '(?:按|根据)\s*(?:本书|书中|原文|文中|教材(?:中)?|本页|该页|页面)(?:的|中)?(?:定义|内容|描述|记载|要求|数据|说明|规定|给出|列出|列举|介绍|指出|提到|显示|展示)',
     '(?:本书|书中|原文|文中|教材(?:中)?|本页|该页|页面)(?:还|也|曾|所)?(?:列出|列举|给出|介绍|指出|提到|说明|规定|显示|展示|可见)',
@@ -125,6 +128,10 @@ for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
             $forbiddenHits++
             [void]$problemLines.Add($lineNumber)
         }
+        if ($firstQuestion -match $nontechnicalScopeQuestion) {
+            $forbiddenHits++
+            [void]$problemLines.Add($lineNumber)
+        }
     }
     if (-not [string]::IsNullOrWhiteSpace($firstAnswer)) {
         Add-Count $answers $firstAnswer $lineNumber
@@ -149,6 +156,7 @@ for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
     }
 
     $warningPatterns = [ordered]@{
+        nontechnical_scope = '职业伦理|职业道德|职业操守|职业责任|公众利益|社会责任|安全教育|岗位纪律|安全内务|个人防护|个人穿戴|消防器材|消防通道|无人值守|明火电炉|事故现场|应急处置|无关人员'
         source_dependency = '上图|下图|该图|图中(?:标注|所示|给出)|按图(?:示|样)'
         undefined_basis = '基准\s*[A-Z](?:\b|[^A-Za-z])'
         ordinal_dependency = '第[一二三四五六七八九十]+(?:步|条|个|种|处|项)(?:\b|[^骤件工序])'
